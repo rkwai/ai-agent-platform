@@ -23,6 +23,57 @@ We help businesses find reliable, enterprise-ready AI solutions that deliver rea
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph "AI Agent Manager Dashboard"
+        Tools[Tool Management]
+        Dashboard[Manager Dashboard]
+        Config[Agent Configuration]
+        Alerts[Active Alerts]
+        Stats[Performance Metrics]
+    end
+
+    subgraph "Agent Orchestration"
+        subgraph "Event Sourcing Core"
+            EventLog[Event Log]
+            StateReconstructor[State Reconstructor]
+            EventProcessor[Event Processor]
+        end
+        
+        subgraph "Agent Management"
+            AgentRegistry[Agent Registry]
+            AgentRunner[Agent Runner]
+            AssistanceRouter[Assistance Router]
+        end
+    end
+
+    subgraph "Tool Integration"
+        ToolRegistry[Tool Registry]
+        subgraph "Common Tools"
+            Gmail[Gmail]
+            Calendar[Google Calendar]
+            Storage[Dropbox]
+            Automation[Zapier]
+        end
+    end
+
+    Dashboard --> Config
+    Config --> AgentRegistry
+    Tools --> ToolRegistry
+    Alerts --> AssistanceRouter
+    
+    AgentRunner --> EventLog
+    EventLog --> StateReconstructor
+    StateReconstructor --> AgentRunner
+    
+    AgentRunner --> ToolRegistry
+    ToolRegistry --> Gmail & Calendar & Storage & Automation
+
+    style Dashboard fill:#f96,stroke:#333,stroke-width:4px
+    style EventLog fill:#96f,stroke:#333,stroke-width:4px
+    style AgentRegistry fill:#69f,stroke:#333,stroke-width:2px
+```
+
 ### Primary Layer - Business Interface
 ```
 Manager Dashboard
