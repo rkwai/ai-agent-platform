@@ -1,4 +1,4 @@
-import { Database } from '../types/database';
+import { Database, Collection, QueryResult, Snapshot } from '../types/database';
 import { EventStoreError } from '../errors';
 import { AgentEvent, EventType } from './types';
 
@@ -24,45 +24,134 @@ export class EventStore {
   }
 
   private async handleAgentStarted(event: AgentEvent): Promise<void> {
-    await this.db.collection('agent_states')
-      .find({ agentId: event.agentId })
-      .exec();
+    await this.db.collection('agent_states').updateOne(
+      { agentId: event.agentId },
+      { 
+        $set: { 
+          status: 'running',
+          lastStartTime: event.metadata.timestamp,
+          currentTask: event.data.taskId
+        }
+      },
+      { upsert: true }
+    );
   }
 
   private async handleAgentStopped(event: AgentEvent): Promise<void> {
-    await this.db.collection('agent_states')
-      .find({ agentId: event.agentId })
-      .exec();
+    await this.db.collection('agent_states').updateOne(
+      { agentId: event.agentId },
+      { 
+        $set: { 
+          status: 'stopped',
+          lastStopTime: event.metadata.timestamp,
+          lastRunDuration: event.data.runDuration
+        }
+      }
+    );
   }
 
   private async handleStateUpdated(event: AgentEvent): Promise<void> {
-    await this.db.collection('agent_states')
-      .find({ agentId: event.agentId })
-      .exec();
+    if (!event.stateDelta) {
+      throw new EventStoreError('State delta required for STATE_UPDATED event');
+    }
+    
+    await this.db.collection('agent_states').updateOne(
+      { agentId: event.agentId },
+      { 
+        $set: event.stateDelta,
+        $push: { 
+          stateHistory: {
+            timestamp: event.metadata.timestamp,
+            changes: event.stateDelta
+          }
+        }
+      }
+    );
   }
 
   private async handleToolAccessed(event: AgentEvent): Promise<void> {
-    await this.db.collection('tool_usage')
-      .find({ agentId: event.agentId })
-      .exec();
+    await this.db.collection('tool_usage').insertOne({
+      agentId: event.agentId,
+      toolId: event.data.toolId,
+      timestamp: event.metadata.timestamp,
+      duration: event.data.duration,
+      success: event.data.success,
+      error: event.data.error
+    });
+    
+    // Update tool usage metrics
+    await this.db.collection('agent_metrics').updateOne(
+      { agentId: event.agentId },
+      {
+        $inc: {
+          [`toolUsage.${event.data.toolId}`]: 1,
+          totalToolCalls: 1
+        }
+      },
+      { upsert: true }
+    );
   }
 
   private async handleAssistanceRequested(event: AgentEvent): Promise<void> {
-    await this.db.collection('assistance_requests')
-      .find({ agentId: event.agentId })
-      .exec();
+    await this.db.collection('assistance_requests').insertOne({
+      agentId: event.agentId,
+      timestamp: event.metadata.timestamp,
+      type: event.data.assistanceType,
+      status: 'pending',
+      context: event.contextRef,
+      priority: event.data.priority || 'medium'
+    });
   }
 
   private async handleTaskCompleted(event: AgentEvent): Promise<void> {
-    await this.db.collection('task_history')
-      .find({ agentId: event.agentId })
-      .exec();
+    await this.db.collection('task_history').insertOne({
+      agentId: event.agentId,
+      taskId: event.data.taskId,
+      startTime: event.data.startTime,
+      endTime: event.metadata.timestamp,
+      success: event.data.success,
+      result: event.data.result
+    });
+    
+    // Update agent metrics
+    await this.db.collection('agent_metrics').updateOne(
+      { agentId: event.agentId },
+      {
+        $inc: {
+          totalTasks: 1,
+          [`taskSuccess.${event.data.success ? 'success' : 'failure'}`]: 1
+        },
+        $push: {
+          taskDurations: {
+            $each: [event.data.duration],
+            $slice: -100 // Keep last 100 durations for averaging
+          }
+        }
+      },
+      { upsert: true }
+    );
   }
 
   private async handleErrorOccurred(event: AgentEvent): Promise<void> {
-    await this.db.collection('error_logs')
-      .find({ agentId: event.agentId })
-      .exec();
+    await this.db.collection('error_logs').insertOne({
+      agentId: event.agentId,
+      timestamp: event.metadata.timestamp,
+      error: event.data.error,
+      severity: event.data.severity,
+      context: event.contextRef
+    });
+    
+    // Update error metrics
+    await this.db.collection('agent_metrics').updateOne(
+      { agentId: event.agentId },
+      {
+        $inc: {
+          totalErrors: 1,
+          [`errorsByType.${event.data.errorType}`]: 1
+        }
+      },
+      { upsert: true }
+    );
   }
 
   private async handleAgentRegistered(event: AgentEvent): Promise<void> {
@@ -104,10 +193,15 @@ export class EventStore {
     }
   }
 
-  async getEvents(agentId: string, afterTimestamp?: Date): Promise<AgentEvent[]> {
+  async getEvents(
+    agentId: string,
+    afterTimestamp?: Date,
+    beforeTimestamp?: Date
+  ): Promise<AgentEvent[]> {
     const query = {
       agentId,
-      ...(afterTimestamp && { 'metadata.timestamp': { $gt: afterTimestamp } })
+      ...(afterTimestamp && { 'metadata.timestamp': { $gt: afterTimestamp } }),
+      ...(beforeTimestamp && { 'metadata.timestamp': { $lte: beforeTimestamp } })
     };
     
     const events = await this.db.collection('events')
@@ -116,5 +210,50 @@ export class EventStore {
       .exec();
     
     return events as AgentEvent[];
+  }
+
+  async reconstructState(agentId: string, targetTimestamp?: Date): Promise<Record<string, unknown>> {
+    const query = {
+      agentId,
+      ...(targetTimestamp && { 'metadata.timestamp': { $lte: targetTimestamp } })
+    };
+    
+    // Get latest snapshot before target timestamp
+    const snapshot = await this.db.collection('snapshots')
+      .find({
+        agentId,
+        ...(targetTimestamp && { timestamp: { $lte: targetTimestamp } })
+      })
+      .sort({ timestamp: -1 })
+      .limit(1)
+      .exec<Snapshot>();
+    
+    const baseState = snapshot[0]?.state || {};
+    const snapshotTimestamp = snapshot[0]?.timestamp;
+    
+    // Get all events after snapshot
+    const events = await this.getEvents(
+      agentId,
+      snapshotTimestamp || new Date(0),
+      targetTimestamp
+    );
+    
+    // Reconstruct state by applying all events
+    return events.reduce((state, event) => {
+      if (event.stateDelta) {
+        return { ...state, ...event.stateDelta };
+      }
+      return state;
+    }, baseState);
+  }
+
+  async createSnapshot(agentId: string): Promise<void> {
+    const state = await this.reconstructState(agentId);
+    
+    await this.db.collection('snapshots').insertOne({
+      agentId,
+      timestamp: new Date(),
+      state
+    });
   }
 } 

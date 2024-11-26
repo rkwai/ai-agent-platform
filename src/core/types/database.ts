@@ -11,10 +11,24 @@ export interface Transaction {
 
 export interface Collection {
   find(query: Record<string, unknown>): QueryResult;
+  updateOne(
+    filter: Record<string, unknown>,
+    update: Record<string, unknown>,
+    options?: { upsert?: boolean }
+  ): Promise<{ modifiedCount: number }>;
+  insertOne(
+    doc: Record<string, unknown>
+  ): Promise<{ insertedId: string }>;
+}
+
+export interface Snapshot {
+  agentId: string;
+  timestamp: Date;
+  state: Record<string, unknown>;
 }
 
 export interface QueryResult {
   sort(criteria: Record<string, number>): QueryResult;
   limit(n: number): QueryResult;
-  exec(): Promise<unknown[]>;
+  exec<T = unknown>(): Promise<T[]>;
 } 

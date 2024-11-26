@@ -1,30 +1,14 @@
 module.exports = {
   preset: 'ts-jest',
-  testEnvironment: 'node',
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
-  },
-  setupFilesAfterEnv: [
-    '<rootDir>/src/setupTests.ts'
-  ],
+  testEnvironment: 'jsdom',
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', {
-      useESM: true
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: 'tsconfig.json'
     }]
   },
-  testMatch: [
-    '<rootDir>/src/**/__tests__/**/*.(test|spec).(ts|tsx)'
-  ],
-  testPathIgnorePatterns: [
-    '/node_modules/',
-    '/dist/',
-    '/src/dashboard/'
-  ],
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  moduleDirectories: ['node_modules', 'src'],
-  globals: {
-    'ts-jest': {
-      useESM: true
-    }
-  }
+  moduleNameMapper: {
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy'
+  },
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
+  setupFiles: ['<rootDir>/src/setupJest.ts']
 }; 

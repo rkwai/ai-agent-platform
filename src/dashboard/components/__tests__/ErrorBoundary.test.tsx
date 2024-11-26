@@ -7,6 +7,16 @@ const ProblemChild = () => {
 };
 
 describe('ErrorBoundary Component', () => {
+  // Suppress console.error for expected errors
+  const originalError = console.error;
+  beforeAll(() => {
+    console.error = jest.fn();
+  });
+
+  afterAll(() => {
+    console.error = originalError;
+  });
+
   it('catches errors and displays fallback UI', () => {
     render(
       <ErrorBoundary>
