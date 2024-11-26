@@ -169,7 +169,13 @@ export class EventStore {
       [EventType.TOOL_ACCESSED]: this.handleToolAccessed.bind(this),
       [EventType.ASSISTANCE_REQUESTED]: this.handleAssistanceRequested.bind(this),
       [EventType.TASK_COMPLETED]: this.handleTaskCompleted.bind(this),
-      [EventType.ERROR_OCCURRED]: this.handleErrorOccurred.bind(this)
+      [EventType.ERROR_OCCURRED]: this.handleErrorOccurred.bind(this),
+      [EventType.TASK_REGISTERED]: this.handleTaskRegistered.bind(this),
+      [EventType.TASK_SCHEDULED]: this.handleTaskScheduled.bind(this),
+      [EventType.TASK_STARTED]: this.handleTaskStarted.bind(this),
+      [EventType.TASK_FAILED]: this.handleTaskFailed.bind(this),
+      [EventType.TASK_RETRYING]: this.handleTaskRetrying.bind(this),
+      [EventType.TASK_CANCELLED]: this.handleTaskCancelled.bind(this)
     };
 
     const handler = projectionHandlers[event.type];
@@ -177,6 +183,14 @@ export class EventStore {
       await handler(event);
     }
   }
+
+  // Add new handlers
+  private async handleTaskRegistered(event: AgentEvent): Promise<void> {}
+  private async handleTaskScheduled(event: AgentEvent): Promise<void> {}
+  private async handleTaskStarted(event: AgentEvent): Promise<void> {}
+  private async handleTaskFailed(event: AgentEvent): Promise<void> {}
+  private async handleTaskRetrying(event: AgentEvent): Promise<void> {}
+  private async handleTaskCancelled(event: AgentEvent): Promise<void> {}
 
   async append(event: AgentEvent): Promise<void> {
     const transaction = await this.db.transaction();
