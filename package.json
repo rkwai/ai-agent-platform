@@ -67,11 +67,6 @@
     },
     "testMatch": ["**/__tests__/**/*.(test|spec).(ts|tsx|js|jsx)"],
     "testPathIgnorePatterns": ["/node_modules/", "/dist/"],
-    "moduleDirectories": ["node_modules", "src"],
-    "globals": {
-      "ts-jest": {
-        "useESM": true
-      }
-    }
+    "moduleDirectories": ["node_modules", "src"]
   }
 }
